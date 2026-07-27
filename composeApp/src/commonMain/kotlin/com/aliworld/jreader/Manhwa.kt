@@ -29,7 +29,7 @@ class MangaDexRepo {
  }
  suspend fun manga(query:String=""):List<MdManga>{
   val root=get("/manga") { append("originalLanguage[]","ko");append("includes[]","cover_art");append("order[followedCount]","desc");listOf("safe","suggestive","erotica","pornographic").forEach{append("contentRating[]",it)};if(query.isNotBlank())append("title",query) }
-  return root["data"]?.jsonArray.orEmpty().map(::parseManga)
+  return root["data"]?.jsonArray.orEmpty().map { parseManga(it.jsonObject) }
  }
  suspend fun detail(id:String)=parseManga(get("/manga/$id") { append("includes[]","cover_art") }["data"]!!.jsonObject)
  suspend fun chapters(id:String):List<MdChapter> = get("/manga/$id/feed") { append("translatedLanguage[]","en");append("order[chapter]","desc");append("includes[]","scanlation_group");listOf("safe","suggestive","erotica","pornographic").forEach{append("contentRating[]",it)} }["data"]?.jsonArray.orEmpty().map { e ->
