@@ -4,7 +4,12 @@ import com.aliworld.jreader.downloads.DownloadRecord
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-class JsonStore { private val json=Json{ignoreUnknownKeys=true;encodeDefaults=true};private val _data=MutableStateFlow(load());val data:StateFlow<Snapshot> = _data.asStateFlow()
+class JsonStore {
+ private val json=Json{ignoreUnknownKeys=true;encodeDefaults=true}
+ private val hadSnapshot=PlatformStorage.read("snapshot_v2").isNotBlank()
+ private val _data=MutableStateFlow(load())
+ val data:StateFlow<Snapshot> = _data.asStateFlow()
+ init { if(!hadSnapshot) PlatformStorage.write("snapshot_v2",json.encodeToString(_data.value)) }
  private fun load():Snapshot { val raw=PlatformStorage.read("snapshot_v2");if(raw.isNotBlank())return runCatching{json.decodeFromString<Snapshot>(raw)}.getOrElse{Snapshot()};return migrateLegacy() }
  private fun migrateLegacy(): Snapshot {
      fun records(key: String): List<Manga> = PlatformStorage.read(key)
@@ -25,7 +30,6 @@ class JsonStore { private val json=Json{ignoreUnknownKeys=true;encodeDefaults=tr
          library = records("favorites").map { LibraryEntry(it) },
          history = records("history").map { HistoryEntry(it) },
      )
-     persist(snapshot)
      return snapshot
  }
  private fun persist(v:Snapshot){PlatformStorage.write("snapshot_v2",json.encodeToString(v));_data.value=v};fun update(block:(Snapshot)->Snapshot)=persist(block(_data.value));fun toggle(m:Manga)=update{s->s.copy(library=if(s.library.any{it.manga.id==m.id&&it.manga.source==m.source})s.library.filterNot{it.manga.id==m.id&&it.manga.source==m.source}else listOf(LibraryEntry(m,addedAt=currentTime()))+s.library)}
