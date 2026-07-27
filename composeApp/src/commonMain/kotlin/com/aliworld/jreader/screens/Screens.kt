@@ -29,5 +29,16 @@ val EH_CATEGORIES=listOf(EhCategory("Doujinshi",2),EhCategory("Manga",4),EhCateg
 @Composable fun DownloadScreen(c:AppContainer){val q by c.downloads.queue.collectAsState();Column(Modifier.padding(14.dp)){Text("Downloads",style=MaterialTheme.typography.headlineLarge);Text("Foreground-only queue",color=MaterialTheme.colorScheme.primary);if(q.isEmpty())EmptyState("No downloads")else LazyColumn{items(q,key={it.id}){d->ListItem(headlineContent={Text("${d.manga.title} · ${d.chapter.number}")},supportingContent={Text("${d.status}${if(d.error.isBlank())"" else " · ${d.error}"}")},trailingContent={Row{if(d.status.name=="FAILED")TextButton({c.downloads.retry(d.id)}){Text("Retry")};TextButton({c.downloads.delete(d.id)}){Text("Delete")}}})}}}}
 @Composable fun SettingsScreen(c:AppContainer){var name by remember{mutableStateOf("")};val s by c.store.data.collectAsState();Column(Modifier.padding(14.dp)){Text("Settings & categories",style=MaterialTheme.typography.headlineLarge);Row{OutlinedTextField(name,{name=it},Modifier.weight(1f),label={Text("New category")});Button({if(name.isNotBlank()){c.store.category(name.trim());name=""}}){Text("Add")}};LazyColumn(Modifier.weight(1f)){items(s.categories,key={it.id}){cat->CategoryRow(cat,{c.store.renameCategory(cat.id,it)},{c.store.deleteCategory(cat.id)})}};Button({c.store.backup()}){Text("Create private JSON backup")};OutlinedButton({c.store.restore()}){Text("Restore backup (overwrite)")}}}
 @Composable private fun CategoryRow(cat:Category,rename:(String)->Unit,delete:()->Unit){var text by remember(cat.id){mutableStateOf(cat.name)};ListItem(headlineContent={OutlinedTextField(text,{text=it;rename(it)},singleLine=true)},supportingContent={Text("Category assignment available from library records")},trailingContent={TextButton(delete){Text("Delete")}})}
-@Composable fun <T> StateContent(s:UiState<T>,retry:()->Unit,content:@Composable(T)->Unit){when(s){UiState.Loading->EmptyState("Loading…");is UiState.Empty->EmptyState(s.message);is UiState.Error->Column(horizontalAlignment=Alignment.CenterHorizontally){Text(s.message);Button(retry){Text("Retry")}};is UiState.Data->content(s.value)}}
+@Composable
+fun <T> StateContent(s: UiState<T>, retry: () -> Unit, content: @Composable (T) -> Unit) {
+    when (s) {
+        UiState.Loading -> EmptyState("Loading…")
+        is UiState.Empty -> EmptyState(s.message)
+        is UiState.Error -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(s.message)
+            Button(onClick = retry) { Text("Retry") }
+        }
+        is UiState.Data -> content(s.value)
+    }
+}
 @Composable fun EmptyState(text:String)=Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){Text(text)}
