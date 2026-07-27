@@ -23,7 +23,9 @@ paths='\n'.join(map(str,kt));assert all(x in paths for x in required)
 text='\n'.join(f.read_text() for f in kt)
 for source in ['MangaDexAdapter','EhentaiAdapter']:assert source in text
 for state in ['QUEUED','DOWNLOADING','COMPLETED','FAILED']:assert state in text
-assert 'pornographic' in text and 'limit=30' in text
+assert 'pornographic' in text and ('limit=50' in text or 'limit = 50' in text)
+assert '/manga/tag' in text and 'SourceTag' in text
+assert 'canPan = { scale > 1f }' in text
 assert "'\\u001d'" in text and "'\\u001e'" in text and 'snapshot_v2' in text
 store=(root/'composeApp/src/commonMain/kotlin/com/aliworld/jreader/storage/JsonStore.kt').read_text()
 migration=store.split('private fun migrateLegacy',1)[1].split('private fun persist',1)[0]

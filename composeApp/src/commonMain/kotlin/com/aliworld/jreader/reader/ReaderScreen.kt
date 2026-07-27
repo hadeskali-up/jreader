@@ -8,7 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.input.pointer.pointerInput
+
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.aliworld.jreader.core.model.*
@@ -25,6 +25,17 @@ private fun ZoomPage(p: Page, fit: ReaderFit, webtoon: Boolean) {
     var offsetY by remember { mutableFloatStateOf(0f) }
     var retry by remember { mutableIntStateOf(0) }
     val source = p.localPath ?: p.remoteUrl
+    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
+        val nextScale = (scale * zoomChange).coerceIn(1f, 5f)
+        scale = nextScale
+        if (nextScale > 1f) {
+            offsetX += panChange.x
+            offsetY += panChange.y
+        } else {
+            offsetX = 0f
+            offsetY = 0f
+        }
+    }
     key(retry) {
         AsyncImage(
             model = source,
@@ -37,13 +48,11 @@ private fun ZoomPage(p: Page, fit: ReaderFit, webtoon: Boolean) {
                     translationX = offsetX
                     translationY = offsetY
                 }
-                .pointerInput(Unit) {
-                    detectTransformGestures { _, pan, zoom, _ ->
-                        scale = (scale * zoom).coerceIn(1f, 5f)
-                        offsetX += pan.x
-                        offsetY += pan.y
-                    }
-                },
+                .transformable(
+                    state = transformState,
+                    lockRotationOnZoomPan = true,
+                    canPan = { scale > 1f },
+                ),
             contentScale = when (fit) {
                 ReaderFit.WIDTH -> ContentScale.FillWidth
                 ReaderFit.CONTAIN -> ContentScale.Fit
