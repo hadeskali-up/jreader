@@ -26,6 +26,8 @@ for state in ['QUEUED','DOWNLOADING','COMPLETED','FAILED']:assert state in text
 assert 'pornographic' in text and ('limit=50' in text or 'limit = 50' in text)
 assert '/manga/tag' in text and 'SourceTag' in text
 assert 'canPan = { scale > 1f }' in text
+assert 'offset=${filter.offset}' in text and 'order[followedCount]=desc' in text
+assert 'Load 50 more' in text
 assert "'\\u001d'" in text and "'\\u001e'" in text and 'snapshot_v2' in text
 store=(root/'composeApp/src/commonMain/kotlin/com/aliworld/jreader/storage/JsonStore.kt').read_text()
 migration=store.split('private fun migrateLegacy',1)[1].split('private fun persist',1)[0]

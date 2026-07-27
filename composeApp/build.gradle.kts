@@ -26,7 +26,7 @@ kotlin {
 android {
     namespace = "com.aliworld.jreader"
     compileSdk = 35
-    defaultConfig { applicationId = "com.aliworld.jreader"; minSdk = 26; targetSdk = 35; versionCode = 4; versionName = "2.0.2" }
+    defaultConfig { applicationId = "com.aliworld.jreader"; minSdk = 26; targetSdk = 35; versionCode = 5; versionName = "2.0.3" }
     packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }

@@ -28,68 +28,164 @@ fun BrowseScreen(source: SourceAdapter, open: (Manga) -> Unit) {
     var selectedTag by remember { mutableStateOf<SourceTag?>(null) }
     var contentRating by remember { mutableStateOf<String?>(null) }
     var tags by remember { mutableStateOf(emptyList<SourceTag>()) }
-    var tick by remember { mutableIntStateOf(0) }
-    var state by remember { mutableStateOf<UiState<List<Manga>>>(UiState.Loading) }
+    var tagError by remember { mutableStateOf<String?>(null) }
+    var results by remember { mutableStateOf(emptyList<Manga>()) }
+    var offset by remember { mutableIntStateOf(0) }
+    var refreshKey by remember { mutableIntStateOf(0) }
+    var loadMoreKey by remember { mutableIntStateOf(0) }
+    var loading by remember { mutableStateOf(true) }
+    var loadingMore by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var hasMore by remember { mutableStateOf(true) }
 
-    LaunchedEffect(tick, source.id) {
-        state = UiState.Loading
-        state = try {
-            if (source.id == SourceId.MANGADEX && tags.isEmpty()) tags = source.tags()
-            val results = source.browse(
+    fun resetAndLoad() {
+        offset = 0
+        results = emptyList()
+        hasMore = true
+        refreshKey++
+    }
+
+    LaunchedEffect(source.id) {
+        if (source.id == SourceId.MANGADEX) {
+            runCatching { source.tags() }
+                .onSuccess { tags = it; tagError = null }
+                .onFailure { tagError = it.message ?: "Genres unavailable" }
+        }
+    }
+
+    LaunchedEffect(refreshKey, source.id) {
+        loading = true
+        error = null
+        runCatching {
+            source.browse(
                 SourceFilter(
                     query = query.trim(),
                     category = category,
                     tagId = selectedTag?.id,
                     contentRating = contentRating,
                     limit = 50,
+                    offset = 0,
                 ),
             )
-            if (results.isEmpty()) UiState.Empty("No results") else UiState.Data(results)
-        } catch (e: Exception) {
-            UiState.Error(e.message ?: "Request failed")
-        }
+        }.onSuccess { page ->
+            results = page.distinctBy { "${it.source}:${it.id}" }
+            offset = page.size
+            hasMore = source.id == SourceId.MANGADEX && page.size == 50
+        }.onFailure { error = it.message ?: "Request failed" }
+        loading = false
+    }
+
+    LaunchedEffect(loadMoreKey) {
+        if (loadMoreKey == 0 || loadingMore || !hasMore) return@LaunchedEffect
+        loadingMore = true
+        error = null
+        runCatching {
+            source.browse(
+                SourceFilter(
+                    query = query.trim(),
+                    category = category,
+                    tagId = selectedTag?.id,
+                    contentRating = contentRating,
+                    limit = 50,
+                    offset = offset,
+                ),
+            )
+        }.onSuccess { page ->
+            results = (results + page).distinctBy { "${it.source}:${it.id}" }
+            offset += page.size
+            hasMore = source.id == SourceId.MANGADEX && page.size == 50
+        }.onFailure { error = it.message ?: "Could not load more" }
+        loadingMore = false
     }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp)) {
         Text(source.name, style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-        if (source.id == SourceId.MANGADEX) Text("Data provided by MangaDex", color = MaterialTheme.colorScheme.primary)
+        if (source.id == SourceId.MANGADEX) {
+            Text("Data provided by MangaDex", color = MaterialTheme.colorScheme.primary)
+            tagError?.let { Text("Genres unavailable: $it", style = MaterialTheme.typography.bodySmall) }
+        }
         Row {
             OutlinedTextField(query, { query = it }, Modifier.weight(1f), label = { Text("Search") }, singleLine = true)
-            Button({ tick++ }, Modifier.padding(start = 8.dp)) { Text("Go") }
+            Button({ resetAndLoad() }, Modifier.padding(start = 8.dp)) { Text("Go") }
         }
         if (source.id == SourceId.EHENTAI) {
             LazyRow {
-                item { FilterChip(category == null, { category = null; tick++ }, { Text("All") }) }
+                item { FilterChip(category == null, { category = null; resetAndLoad() }, { Text("All") }) }
                 items(EH_CATEGORIES) { item ->
                     Spacer(Modifier.width(6.dp))
-                    FilterChip(category == item.bit.toString(), { category = item.bit.toString(); tick++ }, { Text(item.name) })
+                    FilterChip(category == item.bit.toString(), { category = item.bit.toString(); resetAndLoad() }, { Text(item.name) })
                 }
             }
         } else {
             LazyRow {
                 item {
                     FilterChip(selectedTag == null && contentRating == null, {
-                        selectedTag = null; contentRating = null; tick++
+                        selectedTag = null; contentRating = null; resetAndLoad()
                     }, { Text("All genres") })
                 }
                 item {
                     Spacer(Modifier.width(6.dp))
                     FilterChip(contentRating == "pornographic", {
-                        selectedTag = null; contentRating = "pornographic"; tick++
+                        selectedTag = null; contentRating = "pornographic"; resetAndLoad()
                     }, { Text("Pornographic") })
                 }
                 items(tags, key = { it.id }) { tag ->
                     Spacer(Modifier.width(6.dp))
                     FilterChip(selectedTag == tag, {
-                        selectedTag = tag; contentRating = null; tick++
+                        selectedTag = tag; contentRating = null; resetAndLoad()
                     }, { Text(tag.name) })
                 }
             }
         }
-        StateContent(state, { tick++ }) { MangaGrid(it, open) }
+        when {
+            loading -> EmptyState("Loading…")
+            error != null && results.isEmpty() -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(error!!)
+                Button({ resetAndLoad() }) { Text("Retry") }
+            }
+            results.isEmpty() -> EmptyState("No results")
+            else -> MangaGrid(
+                items = results,
+                open = open,
+                footer = {
+                    when {
+                        loadingMore -> CircularProgressIndicator()
+                        error != null -> Button({ loadMoreKey++ }) { Text("Retry load more") }
+                        hasMore -> Button({ loadMoreKey++ }) { Text("Load 50 more") }
+                        else -> Text("End of results")
+                    }
+                },
+            )
+        }
     }
 }
-@Composable fun MangaGrid(items:List<Manga>,open:(Manga)->Unit){LazyVerticalGrid(GridCells.Adaptive(150.dp),verticalArrangement=Arrangement.spacedBy(12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)){items(items,key={"${it.source}:${it.id}"}){m->val interaction=remember{androidx.compose.foundation.interaction.MutableInteractionSource()};val pressed by interaction.collectIsPressedAsState();val scale by animateFloatAsState(if(pressed).97f else 1f,spring(),label="press");ElevatedCard({open(m)},Modifier.graphicsLayer{scaleX=scale;scaleY=scale},interactionSource=interaction){AsyncImage(m.coverUrl,m.title,Modifier.fillMaxWidth().height(210.dp),contentScale=ContentScale.Crop);Text(m.title,Modifier.padding(10.dp),fontWeight=FontWeight.SemiBold,maxLines=3)}}}}
+@Composable
+fun MangaGrid(items: List<Manga>, open: (Manga) -> Unit, footer: (@Composable () -> Unit)? = null) {
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(150.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items(items, key = { "${it.source}:${it.id}" }) { manga ->
+            val interaction = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+            val pressed by interaction.collectIsPressedAsState()
+            val scale by animateFloatAsState(if (pressed) .97f else 1f, spring(), label = "press")
+            ElevatedCard(
+                onClick = { open(manga) },
+                modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale },
+                interactionSource = interaction,
+            ) {
+                AsyncImage(manga.coverUrl, manga.title, Modifier.fillMaxWidth().height(210.dp), contentScale = ContentScale.Crop)
+                Text(manga.title, Modifier.padding(10.dp), fontWeight = FontWeight.SemiBold, maxLines = 3)
+            }
+        }
+        if (footer != null) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Box(Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) { footer() }
+            }
+        }
+    }
+}
 @Composable fun DetailScreen(m0:Manga,c:AppContainer,back:()->Unit,read:(Manga,Chapter)->Unit){val source=c.sources.getValue(m0.source);var state by remember{mutableStateOf<UiState<Pair<Manga,List<Chapter>>>>(UiState.Loading)};var tick by remember{mutableIntStateOf(0)};val snapshot by c.store.data.collectAsState();LaunchedEffect(tick){state=try{val m=source.details(m0);UiState.Data(m to source.chapters(m))}catch(e:Exception){UiState.Error(e.message?:"Detail failed")}};Column(Modifier.fillMaxSize().padding(14.dp)){TextButton(back){Text("Back")};StateContent(state,{tick++}){(m,chapters)->LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)){item{AsyncImage(m.coverUrl,m.title,Modifier.fillMaxWidth().height(260.dp),contentScale=ContentScale.Fit);Text(m.title,style=MaterialTheme.typography.headlineSmall,fontWeight=FontWeight.Bold);Text(listOf(m.status,m.year,m.contentRating).filter{it.isNotBlank()}.joinToString(" · "));Text(m.description);Button({c.library.toggle(m)}){Text(if(snapshot.library.any{it.manga.id==m.id&&it.manga.source==m.source})"Remove from library" else "Add to library")}};items(chapters,key={it.id}){ch->ElevatedCard({read(m,ch)},Modifier.fillMaxWidth()){Row(Modifier.padding(12.dp),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text("Chapter ${ch.number} ${ch.title}");Text("Scanlation: ${ch.scanlationGroup}",color=MaterialTheme.colorScheme.primary)};if(source.supportsDownloads)TextButton({c.downloads.enqueue(m,ch)}){Text("Download")}}}}}}}}
 @Composable fun LibraryScreen(c:AppContainer,open:(Manga)->Unit){val s by c.store.data.collectAsState();Column(Modifier.fillMaxSize().padding(14.dp)){Text("Library",style=MaterialTheme.typography.headlineLarge);if(s.library.isEmpty())EmptyState("Library empty")else MangaGrid(s.library.map{it.manga},open)}}
 @Composable fun ContinueScreen(c:AppContainer,open:(Manga)->Unit){val s by c.store.data.collectAsState();Column(Modifier.fillMaxSize().padding(14.dp)){Text("Continue reading",style=MaterialTheme.typography.headlineLarge);if(s.history.isEmpty())EmptyState("No reading history")else MangaGrid(s.history.sortedByDescending{it.readAt}.map{it.manga},open)}}
