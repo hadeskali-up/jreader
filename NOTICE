@@ -1,5 +1,13 @@
 JReader
+Copyright 2026 JReader contributors
 
-Feature reference: JHenTai, Copyright JHenTai contributors, licensed under Apache License 2.0.
-https://github.com/jiangtian616/JHenTai
-No JHenTai source code or artwork is included. JReader icon is original.
+Licensed under Apache License 2.0. See LICENSE.
+
+Architecture and reader concepts informed by Komikku and Mihon. Komikku is
+Apache-2.0 licensed; attribution retained for conceptual influence. No Komikku,
+Mihon, or third-party extension APK code is executed or bundled.
+
+MangaDex data and images remain property of their respective owners. JReader
+uses official MangaDex API under MangaDex API usage requirements: visible data
+and scanlation-group attribution, no advertising, and no paid access. Users must
+follow https://api.mangadex.org/docs/ and MangaDex terms.

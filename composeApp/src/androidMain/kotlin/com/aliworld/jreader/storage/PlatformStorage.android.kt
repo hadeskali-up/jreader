@@ -1,0 +1,4 @@
+package com.aliworld.jreader.storage
+import android.content.Context
+import java.io.File
+actual object PlatformStorage {private lateinit var context:Context;private val prefs get()=context.getSharedPreferences("jreader",Context.MODE_PRIVATE);actual fun init(context:Any?){this.context=context as Context};actual fun read(key:String)=prefs.getString(key,"").orEmpty();actual fun write(key:String,value:String){prefs.edit().putString(key,value).apply()};actual fun backupPath()=File(context.filesDir,"backups/jreader-backup-v2.json").absolutePath;actual fun writePrivate(path:String,bytes:ByteArray){File(path).apply{parentFile?.mkdirs();writeBytes(bytes)}};actual fun readPrivate(path:String)=File(path).takeIf{it.isFile}?.readBytes();actual fun deleteTree(path:String)=File(path).let{!it.exists()||it.deleteRecursively()};actual fun size(path:String):Long=File(path).walkTopDown().filter{it.isFile}.sumOf{it.length()};actual fun now()=System.currentTimeMillis()}
