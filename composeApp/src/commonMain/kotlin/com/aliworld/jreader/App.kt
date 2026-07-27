@@ -22,11 +22,24 @@ import io.ktor.client.statement.*
 import kotlinx.coroutines.launch
 
 data class Gallery(val url:String,val title:String,val cover:String,val category:String="",val uploader:String="",val pages:String="")
-expect object HtmlParser { fun feed(html:String):List<Gallery>; fun detail(html:String,url:String):Pair<Gallery,List<String>>; fun image(html:String):String? }
+data class EhCategory(val name:String,val bit:Int)
+private val EH_CATEGORIES=listOf(EhCategory("Doujinshi",2),EhCategory("Manga",4),EhCategory("Artist CG",8),EhCategory("Game CG",16),EhCategory("Western",512),EhCategory("Non-H",256),EhCategory("Image Set",32),EhCategory("Cosplay",64),EhCategory("Asian Porn",128),EhCategory("Misc",1))
+expect object HtmlParser { fun feed(html:String):List<Gallery>; fun next(html:String):String?; fun detail(html:String,url:String):Pair<Gallery,List<String>>; fun image(html:String):String? }
 expect object Store { fun get(key:String):String; fun put(key:String,value:String) }
 
 class Repo { private val client=HttpClient { expectSuccess=true }
- suspend fun feed(query:String):List<Gallery>{ val u=if(query.isBlank()) "https://e-hentai.org/" else "https://e-hentai.org/?f_search=${encode(query)}"; return HtmlParser.feed(client.get(u){header("User-Agent","Mozilla/5.0 JReader/1.0")}.bodyAsText()) }
+ suspend fun feed(query:String,category:EhCategory?=null):List<Gallery>{
+  val found=linkedMapOf<String,Gallery>()
+  var cursor:String?=null
+  for(page in 0 until 8){
+   val params=buildList{if(query.isNotBlank())add("f_search=${encode(query)}");if(category!=null)add("f_cats=${1023 xor category.bit}");cursor?.let{add("next=$it")}}.joinToString("&")
+   val html=client.get("https://e-hentai.org/${if(params.isBlank())"" else "?$params"}"){header("User-Agent","Mozilla/5.0 JReader/1.0")}.bodyAsText()
+   val batch=HtmlParser.feed(html);batch.forEach{found.putIfAbsent(it.url,it)}
+   cursor=HtmlParser.next(html)
+   if(found.size>=30||batch.isEmpty()||cursor==null)break
+  }
+  return found.values.take(30)
+ }
  suspend fun detail(url:String)=HtmlParser.detail(client.get(url){header("User-Agent","Mozilla/5.0 JReader/1.0")}.bodyAsText(),url)
  suspend fun pageImage(url:String)=HtmlParser.image(client.get(url){header("User-Agent","Mozilla/5.0 JReader/1.0")}.bodyAsText())
  private fun encode(s:String)=s.encodeToByteArray().joinToString(""){ if(it.toInt().toChar().isLetterOrDigit()) it.toInt().toChar().toString() else "%${it.toUByte().toString(16).uppercase().padStart(2,'0')}" }
@@ -48,9 +61,9 @@ private fun saved(key:String)=unpack(Store.get(key)); private fun save(key:Strin
  Scaffold(bottomBar={NavigationBar{Tab.entries.forEach{NavigationBarItem(tab==it,{tab=it},icon={Text(when(it){Tab.HOME->"⌂";Tab.MANHWA->"M";Tab.FAVORITES->"★";Tab.HISTORY->"◷";Tab.DOWNLOADS->"↓";Tab.SETTINGS->"⚙"})},label={Text(it.label)})}}}){pad->Box(Modifier.padding(pad)){when(tab){Tab.HOME->Feed(open);Tab.MANHWA->ManhwaBrowse(openManhwa);Tab.FAVORITES->SavedList("favorites","No favorites yet",open);Tab.HISTORY->SavedList("history","No reading history",open);Tab.DOWNLOADS->Downloads();Tab.SETTINGS->Settings()}}}
 }
 @Composable private fun Feed(open:(Gallery)->Unit){
- val repo=remember{Repo()}; var q by remember{mutableStateOf("")};var loading by remember{mutableStateOf(true)};var error by remember{mutableStateOf<String?>(null)};var items by remember{mutableStateOf(emptyList<Gallery>())};var tick by remember{mutableIntStateOf(0)}
- LaunchedEffect(tick){loading=true;error=null;try{items=repo.feed(q)}catch(e:Exception){error=e.message?:"Request failed"};loading=false}
- Column(Modifier.fillMaxSize().padding(16.dp)){Text("JReader",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold);Spacer(Modifier.height(10.dp));Row{OutlinedTextField(q,{q=it},Modifier.weight(1f),singleLine=true,label={Text("Search public galleries")});Button({tick++},Modifier.padding(start=8.dp)){Text("Go")}};Spacer(Modifier.height(12.dp));when{loading->State("Loading…");error!=null->State(error!!,"Retry"){tick++};items.isEmpty()->State("No galleries found");else->GalleryList(items,Store.get("layout")!="list",open)}}
+ val repo=remember{Repo()};var q by remember{mutableStateOf("")};var selected by remember{mutableStateOf<EhCategory?>(null)};var loading by remember{mutableStateOf(true)};var error by remember{mutableStateOf<String?>(null)};var items by remember{mutableStateOf(emptyList<Gallery>())};var tick by remember{mutableIntStateOf(0)}
+ LaunchedEffect(tick){loading=true;error=null;try{items=repo.feed(q.trim(),selected)}catch(e:Exception){error=e.message?:"Request failed"};loading=false}
+ Column(Modifier.fillMaxSize().padding(16.dp)){Text("JReader",style=MaterialTheme.typography.headlineMedium,fontWeight=FontWeight.Bold);Spacer(Modifier.height(10.dp));Row{OutlinedTextField(q,{q=it},Modifier.weight(1f),singleLine=true,label={Text("Search public galleries")});Button({tick++},Modifier.padding(start=8.dp)){Text("Go")}};LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp),modifier=Modifier.padding(vertical=8.dp)){item{FilterChip(selected==null,{selected=null;tick++},{Text("All")})};items(EH_CATEGORIES,key={it.name}){c->FilterChip(selected==c,{selected=c;tick++},{Text(c.name)})}};Row(verticalAlignment=Alignment.CenterVertically){Text("${items.size} results${selected?.let{" · ${it.name}"}?:""}",style=MaterialTheme.typography.bodySmall);if(selected!=null||q.isNotBlank())TextButton({selected=null;q="";tick++}){Text("Clear")}};when{loading->State("Loading…");error!=null->State(error!!,"Retry"){tick++};items.isEmpty()->State("No galleries found");else->GalleryList(items,Store.get("layout")!="list",open)}}
 }
 @Composable private fun GalleryList(items:List<Gallery>,grid:Boolean,open:(Gallery)->Unit){if(grid) LazyVerticalGrid(GridCells.Adaptive(155.dp),verticalArrangement=Arrangement.spacedBy(12.dp),horizontalArrangement=Arrangement.spacedBy(12.dp)){items(items,key={it.url}){Card(it,open)}} else LazyColumn(verticalArrangement=Arrangement.spacedBy(10.dp)){items(items,key={it.url}){Card(it,open,true)}}}
 @Composable private fun Card(g:Gallery,open:(Gallery)->Unit,row:Boolean=false){val source=remember{androidx.compose.foundation.interaction.MutableInteractionSource()};val down by source.collectIsPressedAsState();val scale by animateFloatAsState(if(down).97f else 1f,spring());ElevatedCard({open(g)},Modifier.fillMaxWidth().graphicsLayer{scaleX=scale;scaleY=scale},interactionSource=source){if(row)Row{Cover(g,Modifier.width(100.dp).height(140.dp));Info(g,Modifier.padding(12.dp).weight(1f))}else{Cover(g,Modifier.fillMaxWidth().height(210.dp));Info(g,Modifier.padding(10.dp))}}}
