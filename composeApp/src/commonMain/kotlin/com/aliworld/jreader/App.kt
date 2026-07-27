@@ -32,8 +32,8 @@ class Repo { private val client=HttpClient { expectSuccess=true }
  private fun encode(s:String)=s.encodeToByteArray().joinToString(""){ if(it.toInt().toChar().isLetterOrDigit()) it.toInt().toChar().toString() else "%${it.toUByte().toString(16).uppercase().padStart(2,'0')}" }
 }
 
-enum class Tab(val label:String){HOME("Browse"),FAVORITES("Favorites"),HISTORY("History"),DOWNLOADS("Downloads"),SETTINGS("Settings")}
-sealed interface Page { data object Root:Page; data class Detail(val g:Gallery):Page; data class Reader(val title:String,val links:List<String>):Page }
+enum class Tab(val label:String){HOME("Browse"),MANHWA("Manhwa"),FAVORITES("Favorites"),HISTORY("History"),DOWNLOADS("Downloads"),SETTINGS("Settings")}
+sealed interface Page { data object Root:Page; data class Detail(val g:Gallery):Page; data class Reader(val title:String,val links:List<String>):Page; data class ManhwaDetail(val id:String):Page; data class ManhwaReader(val chapter:MdChapter):Page }
 private fun Gallery.pack()=listOf(url,title,cover,category,uploader,pages).joinToString("\u001e"){it.replace("\u001d","")}
 private fun unpack(s:String)=s.split("\u001d").filter{it.isNotBlank()}.mapNotNull{r->r.split("\u001e").takeIf{it.size>=3}?.let{Gallery(it[0],it[1],it[2],it.getOrElse(3){""},it.getOrElse(4){""},it.getOrElse(5){""})}}
 private fun saved(key:String)=unpack(Store.get(key)); private fun save(key:String,x:List<Gallery>)=Store.put(key,x.distinctBy{it.url}.joinToString("\u001d"){it.pack()})
@@ -41,11 +41,11 @@ private fun saved(key:String)=unpack(Store.get(key)); private fun save(key:Strin
 @Composable fun App(){
  var theme by remember{mutableStateOf(Store.get("theme").ifBlank{"system"})}; val dark=theme=="dark"||(theme=="system"&&isSystemInDarkTheme())
  val colors=if(dark) darkColorScheme(background=Color(0xFF101214),surface=Color(0xFF191C1F),primary=Color(0xFF90CAF9)) else lightColorScheme(primary=Color(0xFF315F7D))
- MaterialTheme(colors){ Surface(Modifier.fillMaxSize()){ var page by remember{mutableStateOf<Page>(Page.Root)}; when(val p=page){Page.Root->Root{page=Page.Detail(it)};is Page.Detail->Detail(p.g,{page=Page.Root}){t,l->page=Page.Reader(t,l)};is Page.Reader->Reader(p.title,p.links){page=Page.Root}} } }
+ MaterialTheme(colors){ Surface(Modifier.fillMaxSize()){ var page by remember{mutableStateOf<Page>(Page.Root)}; when(val p=page){Page.Root->Root({page=Page.Detail(it)}){page=Page.ManhwaDetail(it)};is Page.Detail->Detail(p.g,{page=Page.Root}){t,l->page=Page.Reader(t,l)};is Page.Reader->Reader(p.title,p.links){page=Page.Root};is Page.ManhwaDetail->ManhwaDetailScreen(p.id,{page=Page.Root}){page=Page.ManhwaReader(it)};is Page.ManhwaReader->ManhwaReaderScreen(p.chapter){page=Page.ManhwaDetail(p.chapter.mangaId)}} } }
 }
-@Composable private fun Root(open:(Gallery)->Unit){
+@Composable private fun Root(open:(Gallery)->Unit,openManhwa:(String)->Unit){
  var tab by remember{mutableStateOf(Tab.HOME)}
- Scaffold(bottomBar={NavigationBar{Tab.entries.forEach{NavigationBarItem(tab==it,{tab=it},icon={Text(when(it){Tab.HOME->"⌂";Tab.FAVORITES->"★";Tab.HISTORY->"◷";Tab.DOWNLOADS->"↓";Tab.SETTINGS->"⚙"})},label={Text(it.label)})}}}){pad->Box(Modifier.padding(pad)){when(tab){Tab.HOME->Feed(open);Tab.FAVORITES->SavedList("favorites","No favorites yet",open);Tab.HISTORY->SavedList("history","No reading history",open);Tab.DOWNLOADS->Downloads();Tab.SETTINGS->Settings()}}}
+ Scaffold(bottomBar={NavigationBar{Tab.entries.forEach{NavigationBarItem(tab==it,{tab=it},icon={Text(when(it){Tab.HOME->"⌂";Tab.MANHWA->"M";Tab.FAVORITES->"★";Tab.HISTORY->"◷";Tab.DOWNLOADS->"↓";Tab.SETTINGS->"⚙"})},label={Text(it.label)})}}}){pad->Box(Modifier.padding(pad)){when(tab){Tab.HOME->Feed(open);Tab.MANHWA->ManhwaBrowse(openManhwa);Tab.FAVORITES->SavedList("favorites","No favorites yet",open);Tab.HISTORY->SavedList("history","No reading history",open);Tab.DOWNLOADS->Downloads();Tab.SETTINGS->Settings()}}}
 }
 @Composable private fun Feed(open:(Gallery)->Unit){
  val repo=remember{Repo()}; var q by remember{mutableStateOf("")};var loading by remember{mutableStateOf(true)};var error by remember{mutableStateOf<String?>(null)};var items by remember{mutableStateOf(emptyList<Gallery>())};var tick by remember{mutableIntStateOf(0)}

@@ -3,6 +3,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.compose")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 kotlin {
     androidTarget { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
@@ -15,6 +16,7 @@ kotlin {
         commonMain.dependencies {
             implementation(compose.runtime); implementation(compose.foundation); implementation(compose.material3); implementation(compose.ui)
             implementation("io.ktor:ktor-client-core:3.0.3")
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0")
             implementation("io.coil-kt.coil3:coil-compose:3.0.4")
             implementation("io.coil-kt.coil3:coil-network-ktor3:3.0.4")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
